@@ -3,8 +3,7 @@ name: Collect Flyers
 on:
   workflow_dispatch: {}
   schedule:
-    # Every Thursday at 12:10 UTC (adjust later if you want)
-    - cron: "10 12 * * 4"
+    - cron: "10 12 * * 4" # Thu 12:10 UTC
 
 jobs:
   collect:
@@ -26,16 +25,26 @@ jobs:
           python -m playwright install --with-deps chromium
 
       - name: Capture Sobeys products feed
-        run: |
-          python collectors/sobeys_capture.py
+        continue-on-error: true
+        run: python collectors/sobeys_capture.py
 
       - name: Capture Walmart products feed
+        continue-on-error: true
+        run: python collectors/walmart_capture.py
+
+      - name: Sanity check outputs (fail if none)
         run: |
-          python collectors/walmart_capture.py
+          ls -lah out || true
+          COUNT=$(ls -1 out/*_products.json 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$COUNT" -eq 0 ]; then
+            echo "No *_products.json captured."
+            exit 1
+          fi
 
       - name: Upload outputs as artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: flyer-data
-          path: out/*.json
+          path: out/**
           retention-days: 14
