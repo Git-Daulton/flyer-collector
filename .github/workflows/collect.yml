@@ -1,16 +1,15 @@
 name: Collect Flyers
 
-permissions:
-  contents: write
-
 on:
   workflow_dispatch: {}
   schedule:
     - cron: "10 12 * * 4" # Thu 12:10 UTC
 
 jobs:
-  collect:
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed for creating GitHub Releases
 
     steps:
       - name: Checkout
@@ -52,10 +51,45 @@ jobs:
           cd out
           zip -r flyer-data.zip . -x "flyer-data.zip"
 
+      # ---- GitHub Pages output prep (static, always-fetchable URLs) ----
+      - name: Prepare Pages content
+        run: |
+          rm -rf public
+          mkdir -p public/latest
+          cp out/deals_*.normalized.json public/latest/
+          cp out/flyer-data.zip public/latest/
+          printf "%s\n" "OK" > public/latest/health.txt
+          touch public/.nojekyll
+
+          cat > public/index.html <<'HTML'
+          <!doctype html>
+          <html>
+            <head><meta charset="utf-8"><title>flyer-collector</title></head>
+            <body>
+              <h1>flyer-collector</h1>
+              <p>Latest published artifacts:</p>
+              <ul>
+                <li><a href="latest/deals_all.normalized.json">deals_all.normalized.json</a></li>
+                <li><a href="latest/deals_sobeys.normalized.json">deals_sobeys.normalized.json</a></li>
+                <li><a href="latest/deals_walmart.normalized.json">deals_walmart.normalized.json</a></li>
+                <li><a href="latest/flyer-data.zip">flyer-data.zip</a></li>
+                <li><a href="latest/health.txt">health.txt</a></li>
+              </ul>
+            </body>
+          </html>
+          HTML
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      # ---- Keep Releases too (optional but nice for archiving) ----
       - name: Publish latest release assets
         uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: flyer-${{ github.run_id }}
           name: Flyer data (run ${{ github.run_id }})
@@ -72,3 +106,19 @@ jobs:
           name: flyer-data
           path: out/**
           retention-days: 14
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write      # deploy to Pages
+      id-token: write   # required by deploy-pages (OIDC)
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
