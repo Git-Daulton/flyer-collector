@@ -1,7 +1,7 @@
+name: Collect Flyers
+
 permissions:
   contents: write
-
-name: Collect Flyers
 
 on:
   workflow_dispatch: {}
@@ -47,10 +47,10 @@ jobs:
             echo "No *_products.json captured."
             exit 1
           fi
-            - name: Package outputs for release
+
+      - name: Package outputs for release
         run: |
-          cd out
-          zip -r flyer-data.zip .
+          zip -r out/flyer-data.zip out
 
       - name: Publish latest release assets
         uses: softprops/action-gh-release@v2
@@ -63,7 +63,6 @@ jobs:
             out/deals_sobeys.normalized.json
             out/deals_walmart.normalized.json
             out/flyer-data.zip
-
 
       - name: Upload outputs as artifact
         if: always()
