@@ -30,7 +30,7 @@ jobs:
 
       - name: Capture Walmart products feed
         continue-on-error: true
-        run: python collectors/walmart_capture.py
+        run: python collectors/walmart_flipp_capture.py
 
       - name: Normalize feeds
         run: python collectors/normalize.py
