@@ -20,6 +20,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
       - name: Install deps
         run: |
@@ -36,32 +37,32 @@ jobs:
         run: python collectors/walmart_flipp_capture.py
 
       - name: Normalize feeds
-        continue-on-error: true
         run: python collectors/normalize.py
 
       - name: Sanity check outputs (fail if none)
         run: |
           ls -lah out || true
-          COUNT=$(ls -1 out/*_products.json 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$COUNT" -eq 0 ]; then
-            echo "No *_products.json captured."
+          if [ ! -s "out/deals_all.normalized.json" ]; then
+            echo "Missing or empty out/deals_all.normalized.json"
             exit 1
           fi
 
       - name: Package outputs for release
         run: |
-          zip -r out/flyer-data.zip out
+          cd out
+          zip -r flyer-data.zip . -x "flyer-data.zip"
 
       - name: Publish latest release assets
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: flyer-${{ github.run_id }}
           name: Flyer data (run ${{ github.run_id }})
           make_latest: true
+          fail_on_unmatched_files: false
           files: |
-            out/deals_all.normalized.json
-            out/deals_sobeys.normalized.json
-            out/deals_walmart.normalized.json
+            out/deals_*.normalized.json
             out/flyer-data.zip
 
       - name: Upload outputs as artifact
