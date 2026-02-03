@@ -32,6 +32,10 @@ jobs:
         continue-on-error: true
         run: python collectors/walmart_capture.py
 
+      - name: Normalize feeds
+        run: python collectors/normalize.py
+
+
       - name: Sanity check outputs (fail if none)
         run: |
           ls -lah out || true
