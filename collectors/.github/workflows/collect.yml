@@ -28,13 +28,13 @@ jobs:
         continue-on-error: true
         run: python collectors/sobeys_capture.py
 
-      - name: Capture Walmart products feed
+      - name: Capture Walmart products feed (Flipp)
         continue-on-error: true
         run: python collectors/walmart_flipp_capture.py
 
       - name: Normalize feeds
+        continue-on-error: true
         run: python collectors/normalize.py
-
 
       - name: Sanity check outputs (fail if none)
         run: |
