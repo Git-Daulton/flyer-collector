@@ -1,3 +1,6 @@
+permissions:
+  contents: write
+
 name: Collect Flyers
 
 on:
@@ -44,6 +47,23 @@ jobs:
             echo "No *_products.json captured."
             exit 1
           fi
+            - name: Package outputs for release
+        run: |
+          cd out
+          zip -r flyer-data.zip .
+
+      - name: Publish latest release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: flyer-${{ github.run_id }}
+          name: Flyer data (run ${{ github.run_id }})
+          make_latest: true
+          files: |
+            out/deals_all.normalized.json
+            out/deals_sobeys.normalized.json
+            out/deals_walmart.normalized.json
+            out/flyer-data.zip
+
 
       - name: Upload outputs as artifact
         if: always()
