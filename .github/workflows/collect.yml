@@ -38,6 +38,19 @@ jobs:
       - name: Normalize feeds
         run: python collectors/normalize.py
 
+      - name: Sanity check outputs (fail if none)
+        run: |
+          ls -lah out || true
+          if [ ! -s "out/deals_all.normalized.json" ]; then
+            echo "Missing or empty out/deals_all.normalized.json"
+            exit 1
+          fi
+
+      - name: Package outputs (ZIP)
+        run: |
+          cd out
+          zip -r flyer-data.zip . -x "flyer-data.zip"
+
       - name: Upload outputs to Google Drive
         env:
           GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
@@ -49,20 +62,7 @@ jobs:
             out/deals_walmart.normalized.json \
             out/flyer-data.zip
 
-      - name: Sanity check outputs (fail if none)
-        run: |
-          ls -lah out || true
-          if [ ! -s "out/deals_all.normalized.json" ]; then
-            echo "Missing or empty out/deals_all.normalized.json"
-            exit 1
-          fi
-
-      - name: Package outputs for release
-        run: |
-          cd out
-          zip -r flyer-data.zip . -x "flyer-data.zip"
-
-      # ---- GitHub Pages output prep (static, always-fetchable URLs) ----
+      # ---- GitHub Pages output prep ----
       - name: Prepare Pages content
         run: |
           rm -rf public
@@ -98,7 +98,7 @@ jobs:
         with:
           path: public
 
-      # ---- Keep Releases too (optional but nice for archiving) ----
+      # ---- Keep Releases too (optional, good for archive) ----
       - name: Publish latest release assets
         uses: softprops/action-gh-release@v2
         with:
@@ -123,8 +123,8 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      pages: write      # deploy to Pages
-      id-token: write   # required by deploy-pages (OIDC)
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
