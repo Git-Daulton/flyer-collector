@@ -1,69 +1,74 @@
 import os
 import sys
-import json
 from pathlib import Path
 
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-
-SCOPES = ["https://www.googleapis.com/auth/drive"]  # safest for service accounts
-
-
-def get_env(name: str) -> str:
-    val = os.getenv(name)
-    if not val:
-        raise RuntimeError(f"Missing env var: {name}")
-    return val
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 
-def ensure_parent_folder_id(folder_id: str) -> str:
-    # Basic sanity check: Drive folder IDs are long-ish, usually letters/numbers/_-
-    if len(folder_id) < 10:
-        raise RuntimeError("GDRIVE_FOLDER_ID looks too short—double-check you copied the folder ID.")
-    return folder_id
+def drive_service():
+    client_id = os.environ["GDRIVE_CLIENT_ID"]
+    client_secret = os.environ["GDRIVE_CLIENT_SECRET"]
+    refresh_token = os.environ["GDRIVE_REFRESH_TOKEN"]
+
+    creds = Credentials(
+        token=None,
+        refresh_token=refresh_token,
+        token_uri=TOKEN_URI,
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=SCOPES,
+    )
+
+    # Exchange refresh_token -> access token
+    creds.refresh(Request())
+    return build("drive", "v3", credentials=creds)
 
 
-def upsert_file(service, folder_id: str, local_path: Path) -> str:
-    filename = local_path.name
-    mime = "application/zip" if filename.lower().endswith(".zip") else "application/json"
-
-    # Look for existing file with same name in target folder
-    q = f"'{folder_id}' in parents and name='{filename}' and trashed=false"
-    resp = service.files().list(q=q, fields="files(id,name)").execute()
+def find_existing(service, folder_id: str, name: str):
+    safe_name = name.replace("'", "\\'")
+    q = f"name='{safe_name}' and '{folder_id}' in parents and trashed=false"
+    resp = service.files().list(q=q, fields="files(id,name)", pageSize=10).execute()
     files = resp.get("files", [])
+    return files[0]["id"] if files else None
 
-    media = MediaFileUpload(str(local_path), mimetype=mime, resumable=True)
 
-    if files:
-        file_id = files[0]["id"]
-        service.files().update(fileId=file_id, media_body=media).execute()
-        return file_id
-    else:
-        file_metadata = {"name": filename, "parents": [folder_id]}
-        created = service.files().create(body=file_metadata, media_body=media, fields="id").execute()
-        return created["id"]
+
+def upsert_file(service, folder_id: str, path: Path):
+    name = path.name
+    media = MediaFileUpload(str(path), resumable=True)
+
+    existing_id = find_existing(service, folder_id, name)
+    if existing_id:
+        service.files().update(fileId=existing_id, media_body=media).execute()
+        print(f"[drive] updated: {name} ({existing_id})")
+        return existing_id
+
+    meta = {"name": name, "parents": [folder_id]}
+    created = service.files().create(body=meta, media_body=media, fields="id").execute()
+    file_id = created["id"]
+    print(f"[drive] created: {name} ({file_id})")
+    return file_id
 
 
 def main():
-    sa_json = json.loads(get_env("GDRIVE_SERVICE_ACCOUNT_JSON"))
-    folder_id = ensure_parent_folder_id(get_env("GDRIVE_FOLDER_ID"))
-
-    creds = service_account.Credentials.from_service_account_info(sa_json, scopes=SCOPES)
-    service = build("drive", "v3", credentials=creds, cache_discovery=False)
+    folder_id = os.environ["GDRIVE_FOLDER_ID"]
+    service = drive_service()
 
     if len(sys.argv) < 2:
-        raise RuntimeError("Usage: python collectors/drive_upload.py <file1> <file2> ...")
+        print("Usage: drive_upload.py <file1> <file2> ...")
+        sys.exit(2)
 
-    paths = [Path(p) for p in sys.argv[1:]]
-    missing = [str(p) for p in paths if not p.exists()]
-    if missing:
-        raise RuntimeError(f"Missing files: {missing}")
-
-    for p in paths:
-        file_id = upsert_file(service, folder_id, p)
-        print(f"Uploaded {p.name} -> fileId={file_id}")
+    for p in sys.argv[1:]:
+        path = Path(p)
+        if not path.exists() or path.stat().st_size == 0:
+            raise RuntimeError(f"Missing or empty file: {path}")
+        upsert_file(service, folder_id, path)
 
 
 if __name__ == "__main__":

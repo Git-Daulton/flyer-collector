@@ -1,0 +1,16 @@
+# Secrets / local auth files (DO NOT COMMIT)
+oauth_client.json
+oauth_client*.json
+*.key.json
+*.pem
+*.p12
+
+# Python junk
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS/editor
+.DS_Store
+.vscode/
